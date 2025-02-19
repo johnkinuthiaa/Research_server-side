@@ -1,12 +1,16 @@
 package com.slippery.geminiresearch.services.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slippery.geminiresearch.dto.ResearchDto;
 import com.slippery.geminiresearch.models.UserRequest;
 import com.slippery.geminiresearch.services.ResearchService;
 import org.springframework.beans.factory.annotation.Value;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.io.IOException;
 import java.util.Map;
 
 @Service
@@ -22,6 +26,8 @@ public class ResearchServiceImplementation implements ResearchService {
     public ResearchDto processContent(UserRequest userRequest) {
         ResearchDto researchDto =new ResearchDto();
         String createdPrompt =buildPrompt(userRequest);
+        ObjectMapper objectMapper = new ObjectMapper();
+
         Map<String,Object> requestBody = Map.of(
                 "contents",new Object[]{
                         Map.of("parts",new Object[]{
@@ -30,13 +36,31 @@ public class ResearchServiceImplementation implements ResearchService {
                 }
         );
         String response =webClient.post()
-                .uri("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyD0IHwnimrFZkuLfbbXcO26dh3dbvkwmCU")
+                .uri("")
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
-        researchDto.setMessage(response);
-        researchDto.setStatusCode(200);
+
+        try {
+            JsonNode rootNode = objectMapper.readTree(response);
+            JsonNode candidatesNode = rootNode.path("candidates");
+
+            // Iterate through candidates
+            for (JsonNode candidateNode : candidatesNode) {
+                JsonNode contentNode = candidateNode.path("content");
+                JsonNode partsNode = contentNode.path("parts");
+
+                // Iterate through parts
+                for (JsonNode partNode : partsNode) {
+                    String text = partNode.path("text").asText();
+                    researchDto.setMessage(text);
+                    researchDto.setStatusCode(200);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         return researchDto;
     }
 
@@ -44,7 +68,7 @@ public class ResearchServiceImplementation implements ResearchService {
     public String buildPrompt(UserRequest userRequest) {
         StringBuilder prompt =new StringBuilder();
         switch (userRequest.getOperation()){
-            case "sumarize":
+            case "summarize":
                 prompt.append("Provide a clear and concise summary of the following content \n\n");
                 break;
             case "suggest":
